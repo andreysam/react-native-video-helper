@@ -283,7 +283,7 @@ public class MediaController {
             case COMPRESS_QUALITY_MEDIUM:
                 maxWidth = 1280;
                 maxHeight = 1280;
-                bitrate = 1900000;
+                bitrate = 3000000;
                 break;
             case COMPRESS_QUALITY_HIGH:
                 maxWidth = 1920;
@@ -446,17 +446,24 @@ public class MediaController {
                             }
                             MediaFormat inputFormat = extractor.getTrackFormat(videoIndex);
 
+                            encoder = MediaCodec.createEncoderByType(MIME_TYPE);
+                            MediaCodecInfo.EncoderCapabilities encoderCapabilities = encoder.getCodecInfo().getCapabilitiesForType(MIME_TYPE).getEncoderCapabilities();
+
                             MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, resultWidth, resultHeight);
+                            if (encoderCapabilities.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)) {
+                                outputFormat.setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR);
+                            } else {
+                                Log.d("video-helper", "VBR not supported");
+                            }
                             outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
                             outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
-                            outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 25);
+                            outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
                             outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10);
                             if (Build.VERSION.SDK_INT < 18) {
                                 outputFormat.setInteger("stride", resultWidth + 32);
                                 outputFormat.setInteger("slice-height", resultHeight);
                             }
 
-                            encoder = MediaCodec.createEncoderByType(MIME_TYPE);
                             encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
                             if (Build.VERSION.SDK_INT >= 18) {
                                 inputSurface = new InputSurface(encoder.createInputSurface());
