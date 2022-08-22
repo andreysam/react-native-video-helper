@@ -1,5 +1,5 @@
 
-package com.rnvideohelper;
+package com.reactnativevideohelper;
 
 import java.util.Arrays;
 import java.util.Collections;
