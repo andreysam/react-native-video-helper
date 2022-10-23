@@ -182,7 +182,7 @@ public class MediaController {
             try {
                 maxBufferSize = trackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
             } catch (Exception e) {
-                Log.e(e); //s20 ultra exception
+                Log.e("MediaController", e.getMessage(), e); //s20 ultra exception
             }
 
             if (start > 0) {
@@ -202,7 +202,7 @@ public class MediaController {
                 try {
                     maxBufferSize = Math.max(trackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE), maxBufferSize);
                 } catch (Exception e) {
-                    Log.e(e); //s20 ultra exception
+                    Log.e("MediaController", e.getMessage(), e); //s20 ultra exception
                 }
                 if (start > 0) {
                     extractor.seekTo(start, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
