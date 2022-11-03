@@ -1,9 +1,14 @@
 package com.reactnativevideohelper.video;
 
 import android.os.AsyncTask;
+import android.util.Log;
+
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
 
 public class VideoCompress {
     private static final String TAG = VideoCompress.class.getSimpleName();
+    private static ArrayList<VideoCompressTask> tasks = new ArrayList<VideoCompressTask>();
 
     public static VideoCompressTask compressVideo(String srcPath, String destPath, String quality, long startTime, long endTime, CompressListener listener, int defaultOrientation) {
         int finalQuality = MediaController.COMPRESS_QUALITY_LOW;
@@ -15,8 +20,22 @@ public class VideoCompress {
         }
 
         VideoCompressTask task = new VideoCompressTask(listener, finalQuality, startTime, endTime, defaultOrientation);
+        tasks.add(task);
         task.execute(srcPath, destPath);
         return task;
+    }
+
+    public static String cancelAll() {
+        int cancelled = 0;
+        for (VideoCompressTask task : tasks) {
+            task.cancel(true);
+            cancelled += 1;
+        }
+        String returnValue = cancelled + "/" + tasks.size();
+
+        tasks.clear();
+
+        return returnValue;
     }
 
     private static class VideoCompressTask extends AsyncTask<String, Float, Boolean> {
@@ -43,16 +62,27 @@ public class VideoCompress {
         }
 
         @Override
+        protected void onCancelled(Boolean aBoolean) {
+            super.onCancelled(aBoolean);
+            MediaController.getInstance().cancel();
+        }
+
+        @Override
         protected Boolean doInBackground(String... paths) {
             MediaController media = MediaController.getInstance();
             media.SetDefaultOrientation(defaultOrientation);
 
-            return media.convertVideo(paths[0], paths[1], mQuality, mStartTime, mEndTime, new MediaController.CompressProgressListener() {
-                @Override
-                public void onProgress(float percent) {
-                    publishProgress(percent);
-                }
-            });
+            try {
+                return media.convertVideo(paths[0], paths[1], mQuality, mStartTime, mEndTime, new MediaController.CompressProgressListener() {
+                    @Override
+                    public void onProgress(float percent) {
+                        publishProgress(percent);
+                    }
+                });
+            } catch (FileNotFoundException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+            return null;
         }
 
         @Override

@@ -10,12 +10,21 @@ import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.os.Build;
 import android.util.Log;
+import android.util.Range;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 @SuppressLint("NewApi")
 public class MediaController {
+    private static final String TAG = MediaController.class.getSimpleName();
+
     static final int COMPRESS_QUALITY_HIGH = 1;
     static final int COMPRESS_QUALITY_MEDIUM = 2;
     static final int COMPRESS_QUALITY_LOW = 3;
@@ -57,6 +66,10 @@ public class MediaController {
             }
         }
         return localInstance;
+    }
+
+    public void cancel() {
+        cancelCurrentVideoConversion = true;
     }
 
     @SuppressLint("NewApi")
@@ -125,7 +138,11 @@ public class MediaController {
 
         @Override
         public void run() {
-            MediaController.getInstance().convertVideo(videoPath, destPath, 0, -1, -1,null);
+            try {
+                MediaController.getInstance().convertVideo(videoPath, destPath, 0, -1, -1,null);
+            } catch (FileNotFoundException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
         }
     }
 
@@ -345,7 +362,8 @@ public class MediaController {
      * @return
      */
     @TargetApi(16)
-    public boolean convertVideo(final String sourcePath, String destinationPath, int quality, long startT, long endT, CompressProgressListener listener) {
+    public boolean convertVideo(final String sourcePath, String destinationPath, int quality, long startT, long endT, CompressProgressListener listener) throws FileNotFoundException {
+        cancelCurrentVideoConversion = false;
         this.path=sourcePath;
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
@@ -403,8 +421,6 @@ public class MediaController {
 
         int rotateRender = 0;
 
-        File cacheFile = new File(destinationPath);
-
         if (Build.VERSION.SDK_INT < 18 && resultHeight > resultWidth && resultWidth != originalWidth && resultHeight != originalHeight) {
             int temp = resultHeight;
             resultHeight = resultWidth;
@@ -430,7 +446,6 @@ public class MediaController {
             }
         }
 
-
         File inputFile = new File(path);
         if (!inputFile.canRead()) {
             didWriteData(true, true);
@@ -439,6 +454,39 @@ public class MediaController {
 
         String videoPath = inputFile.toString();
 
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(videoPath);
+        } catch (IOException e) {
+            Log.e(TAG, e.getMessage(),e);
+        }
+
+        int videoIndex = findTrack(extractor, false);
+        extractor.selectTrack(videoIndex);
+        MediaFormat videoFormat = extractor.getTrackFormat(videoIndex);
+
+        if (originalHeight <= maxHeight && originalWidth <= maxWidth && videoFormat.getString(MediaFormat.KEY_MIME).equals(MIME_TYPE)) {
+            Log.d(TAG, "Video copy start");
+            try (InputStream in = new FileInputStream(sourcePath)) {
+                try (OutputStream out = new FileOutputStream(destinationPath)) {
+                    // Transfer bytes from in to out
+                    byte[] buf = new byte[1024];
+                    int len;
+                    while ((len = in.read(buf)) > 0) {
+                        out.write(buf, 0, len);
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, e.getMessage(), e);
+                }
+            } catch (IOException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+            Log.d(TAG, "Video copy end");
+            return true;
+        }
+
+        File cacheFile = new File(destinationPath);
+
         videoConvertFirstWrite = true;
         boolean error = false;
 
@@ -446,7 +494,6 @@ public class MediaController {
 
         if (resultWidth != 0 && resultHeight != 0) {
             MP4Builder mediaMuxer = null;
-            MediaExtractor extractor = null;
 
             try {
                 MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -455,13 +502,10 @@ public class MediaController {
                 movie.setRotation(rotationValue);
                 movie.setSize(resultWidth, resultHeight);
                 mediaMuxer = new MP4Builder().createMovie(movie, false);
-                extractor = new MediaExtractor();
-                extractor.setDataSource(videoPath);
 
                 checkConversionCanceled();
 
                 if (resultWidth != originalWidth || resultHeight != originalHeight || rotateRender != 0 || Build.VERSION.SDK_INT >= 18 && startTime != -1) {
-                    int videoIndex = findTrack(extractor, false);
                     int audioIndex = bitrate != -1 ? findTrack(extractor, true) : -1;
                     if (videoIndex >= 0) {
                         MediaCodec decoder = null;
@@ -540,8 +584,6 @@ public class MediaController {
                                 }
                             }
 
-                            extractor.selectTrack(videoIndex);
-                            MediaFormat videoFormat = extractor.getTrackFormat(videoIndex);
                             ByteBuffer audioBuffer = null;
                             if (audioIndex >= 0) {
                                 extractor.selectTrack(audioIndex);

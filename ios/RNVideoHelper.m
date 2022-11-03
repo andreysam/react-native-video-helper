@@ -38,6 +38,10 @@ RCT_EXPORT_MODULE()
     }
 }
 
+SDAVAssetExportSession* encoders[];
+
+int lastEncoder = 0;
+
 RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject){
     
     NSDate *methodStart = [NSDate date];
@@ -53,9 +57,9 @@ RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options re
     NSNumber *endT = @([options[@"endTime"] floatValue]);
     
     AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-
+    
     CGSize naturalSize = [videoTrack naturalSize];
-
+    
     CGFloat originalBitrate = [videoTrack estimatedDataRate];
     
     CGFloat maxWidth = 720;
@@ -77,7 +81,7 @@ RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options re
     CGSize transformedVideoSize =
     CGSizeApplyAffineTransform(videoTrack.naturalSize, videoTrack.preferredTransform);
     bool videoIsPortrait = transformedVideoSize.width < transformedVideoSize.height;
-
+    
     if (videoIsPortrait && (originalWidth > originalHeight)) {
         originalWidth = naturalSize.height;
         originalHeight = naturalSize.width;
@@ -90,8 +94,10 @@ RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options re
     // output
     CGFloat width = originalWidth * finalRatio;
     CGFloat height = originalHeight * finalRatio;
-
-    SDAVAssetExportSession *encoder = [SDAVAssetExportSession.alloc initWithAsset:asset];
+    
+    encoders[lastEncoder] = [SDAVAssetExportSession.alloc initWithAsset:asset];
+    
+    SDAVAssetExportSession* encoder = encoders[lastEncoder++];
     
     if (startT && [startT floatValue] > duration) {
         reject(@"start_time_error", @"Start time is longer than video duration", nil);
@@ -110,20 +116,19 @@ RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options re
     }
     
     encoder.videoSettings = @{
-      AVVideoCodecKey: AVVideoCodecH264,
-      AVVideoWidthKey: @(width),
-      AVVideoHeightKey: @(height),
-      AVVideoCompressionPropertiesKey: @{
-              AVVideoAverageBitRateKey: @(bitrate > originalBitrate ? originalBitrate : bitrate),
-          AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel,
+        AVVideoCodecKey: AVVideoCodecTypeH264,
+        AVVideoWidthKey: @(width),
+        AVVideoHeightKey: @(height),
+        AVVideoCompressionPropertiesKey: @{
+            AVVideoProfileLevelKey: AVVideoProfileLevelH264MainAutoLevel,
         },
     };
     
     encoder.audioSettings = @{
-      AVFormatIDKey: @(kAudioFormatMPEG4AAC),
-      AVNumberOfChannelsKey: @1,
-      AVSampleRateKey: @44100,
-      AVEncoderBitRateKey: @128000,
+        AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+        AVNumberOfChannelsKey: @1,
+        AVSampleRateKey: @44100,
+        AVEncoderBitRateKey: @128000,
     };
     
     encoder.outputFileType = AVFileTypeMPEG4;
@@ -139,23 +144,37 @@ RCT_EXPORT_METHOD(compress:(NSString *)source options:(NSDictionary *)options re
     
     [encoder exportAsynchronouslyWithCompletionHandler:^
      {
-         [timer invalidate];
-         timer = nil;
-         
-         if (encoder.status == AVAssetExportSessionStatusCompleted)
-         {
-             NSDate *methodFinish = [NSDate date];
-             NSTimeInterval executionTime = [methodFinish timeIntervalSinceDate:methodStart];
-             NSLog(@"executionTime = %f", executionTime);
-             
-             NSLog(@"Video export succeeded");
-             resolve(encoder.outputURL.absoluteString);
-         } else {
-             NSLog(@"Video export failed with error: %@ (%ld)", encoder.error.localizedDescription, encoder.error.code);
-             reject(@"video_export_error", [NSString stringWithFormat:@"Video export failed with error: %@ (%ld)", encoder.error.localizedDescription, encoder.error.code], nil);
-         }
-     }];
+        [timer invalidate];
+        timer = nil;
+        
+        if (encoder.status == AVAssetExportSessionStatusCompleted)
+        {
+            NSDate *methodFinish = [NSDate date];
+            NSTimeInterval executionTime = [methodFinish timeIntervalSinceDate:methodStart];
+            NSLog(@"executionTime = %f", executionTime);
+            
+            NSLog(@"Video export succeeded");
+            resolve(encoder.outputURL.absoluteString);
+        } else {
+            NSLog(@"Video export failed with error: %@ (%ld)", encoder.error.localizedDescription, encoder.error.code);
+            reject(@"video_export_error", [NSString stringWithFormat:@"Video export failed with error: %@ (%ld)", encoder.error.localizedDescription, encoder.error.code], nil);
+        }
+    }];
     
+}
+
+RCT_EXPORT_METHOD(cancelAll:resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject){
+    int success = 0;
+    for (int i = 0; i < lastEncoder; i++) {
+        @try {
+            [encoders[i] cancelExport];
+            success += 1;
+        } @catch (NSException *exception) {
+            NSLog(@"%@", exception.reason);
+        }
+    }
+    resolve([NSString stringWithFormat:@"%d/%d",success, lastEncoder]);
+    lastEncoder = 0;
 }
 
 @end
