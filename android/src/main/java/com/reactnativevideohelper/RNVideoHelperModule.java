@@ -38,10 +38,10 @@ public class RNVideoHelperModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void addListener() {}
+  public void addListener(String eventName) {}
 
   @ReactMethod
-  public void removeListeners() {}
+  public void removeListeners(int count) {}
 
   @ReactMethod
   public void cancelAll(String source, final Promise pm) {
