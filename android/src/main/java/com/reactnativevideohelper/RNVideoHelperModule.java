@@ -38,6 +38,12 @@ public class RNVideoHelperModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
+  public void addListener() {}
+
+  @ReactMethod
+  public void removeListeners() {}
+
+  @ReactMethod
   public void cancelAll(String source, final Promise pm) {
     try {
       pm.resolve(VideoCompress.cancelAll());
